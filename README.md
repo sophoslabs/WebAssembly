@@ -1,6 +1,6 @@
 # WebAssembly #
 
-This repository contains some tools developed to help analyzing [WebAssembly format](https://webassembly.org):
+This repository contains some tools developed to help analyzing [WebAssembly format](https://github.com/WebAssembly/design/blob/master/BinaryEncoding.md):
 
  - the `Tools/` contains all the tools including:
     - a [Kaitai](https://kaitai.io) module for parsing `.wasm` files
