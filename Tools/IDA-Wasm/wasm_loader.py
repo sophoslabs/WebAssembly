@@ -86,7 +86,8 @@ class resizable_limits:
     def __init__(self, fd):
         _, self.flags = varint_decode_stream(fd)
         _, self.initial = varint_decode_stream(fd)
-        _, self.maximal = varint_decode_stream(fd)
+        if self.flags:
+            _, self.maximal = varint_decode_stream(fd)
 
 def read_one(stream):
     c = stream.read(1)
