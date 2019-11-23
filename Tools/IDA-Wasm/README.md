@@ -4,7 +4,7 @@ To support `.wasm` parsing in IDA Pro, it is required to have IDA Pro 7+ with ID
 `wasm_processor.py` (respectively `wasm_loader.py`) into the following directories:
 
  - `C:\Program Files\IDA 7.x\procs` (resp. `C:\Program Files\IDA 7.x\loaders`)  for a system-wide installation (need Admin privileges)
- - `%APPDATA%\Hex Rays\IDA\procs` (resp. `%APPDATA%\Hex Rays\IDA\loaders`)  for a user-specific installation
+ - `%APPDATA%\Hex Rays\IDA\procs` (resp. `%APPDATA%\Hex Rays\IDA\procs`)  for a user-specific installation
 
 ![preview.png](https://i.imgur.com/ROf2pXM.png)
 
