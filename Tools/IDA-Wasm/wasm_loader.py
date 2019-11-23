@@ -9,13 +9,18 @@
 #  - %APPDATA%\Hex Rays\IDA\loaders  (user only)
 #
 
+from __future__ import print_function
+
+import io, struct
 import idc, idaapi
 from idaapi import *
 from idc import *
 
-import struct
 
-DEBUG = True
+#
+# Change here to enable verbose output
+#
+DEBUG = False
 
 
 def enum(**enums):
@@ -31,7 +36,16 @@ def p16(x): return struct.pack("<H", x)
 def p32(x): return struct.pack("<I", x)
 def p64(x): return struct.pack("<Q", x)
 
-class DecodingError(Exception): pass
+def log(x): print(x)
+def dbg(x): log("[*] {:s}".format(x)) if DEBUG else None
+def ok(x): log("[+] {:s}".format(x))
+def err(x): log("[-] {:s}".format(x))
+def warn(x): log("[!] {:s}".format(x))
+
+
+class DecodingError(Exception): 
+    pass
+
 
 class uint32:
     def __init__(self, raw):
@@ -86,7 +100,7 @@ class resizable_limits:
     def __init__(self, fd):
         _, self.flags = varint_decode_stream(fd)
         _, self.initial = varint_decode_stream(fd)
-        if self.flags:
+        if self.flags == 1:
             _, self.maximal = varint_decode_stream(fd)
 
 def read_one(stream):
@@ -203,10 +217,16 @@ class FunctionBody:
     end_ea = 0
     ordinal = 0
 
+    def __str__(self):
+        return "FunctionBody(len=%d)" %  (self.end_ea - self.start_ea)
+
 
 class CodeSection:
     count = 0 # variunt32
     function_bodies = [] # array of FunctionBody
+
+    def __str__(self): 
+        return "CodeSection(%d functions)" % len(self.function_bodies)
 
 
 class ElemSegment:
@@ -220,10 +240,16 @@ class ElementSection:
     count = 0 # variunt32
     entries = []
 
+    def __str__(self): 
+        return "ElementSection(%d elements)" % len(self.entries)
+
 
 class ImportSection:
     count = 0 # variunt32
     entries = []
+
+    def __str__(self): 
+        return "ImportSection(%d imports)" % len(self.entries)
 
 
 class ImportEntry:
@@ -236,10 +262,16 @@ class ImportEntry:
     field_str_addr = 0
     type = 0
 
+    def __str__(self): 
+        return "ImportEntry(%s:%s, type:%s, kind:%d)" % (self.module_str, self.field_str, self.type.__class__.__name__, self.kind)
+
 
 class ExportSection:
     count = 0 # variunt32
     entries = []
+
+    def __str__(self): 
+        return "ExportSection(%d exports)" % len(self.entries)
 
 
 class ExportEntry:
@@ -249,6 +281,9 @@ class ExportEntry:
     index = 0
     start_ea = 0
     end_ea = 0
+
+    def __str__(self): 
+        return "ExportEntry(%s)" % (self.field_str,)
 
 
 
@@ -283,14 +318,14 @@ class WASM:
                 _, le.type = varint_decode_stream(fd)
                 fb.locals.append(le)
             fb.start_ea = fd.tell()
-            if DEBUG: print(fb.start_ea - local_start)
             fb.code = fd.read(fb.body_size - (fb.start_ea - local_start) - 1)
             end = u8(fb.code[-1])
             fb.end_ea = fd.tell()
-            if DEBUG: print("FunctionBody {:x}-{:x} , body_size={:x}, local_count={:x}".format(fb.start_ea, fb.end_ea, fb.body_size, fb.local_count))
+            dbg("FunctionBody {:x}-{:x} , body_size={:x}, local_count={:x}".format(fb.start_ea, fb.end_ea, fb.body_size, fb.local_count))
             assert end == FunctionBody.end, "[CODE] {:x} != {:x} at {:x}".format(end, FunctionBody.end, fb.end_ea)
             fb.ordinal = i
             cs.function_bodies.append(fb)
+        dbg(cs)
         return cs
 
 
@@ -305,6 +340,7 @@ class WASM:
             for j in range(e.num_elem):
                 _, elem = varint_decode_stream(fd)
                 e.elems.append(elem)
+            dbg(e)
         return es
 
 
@@ -312,7 +348,6 @@ class WASM:
         imp = ImportSection()
         _, imp.count = varint_decode_stream(fd)
         for ent in range(imp.count):
-            # print("%d - %#x" % (ent, fd.tell()))
             ie = ImportEntry()
             _, ie.module_len = varint_decode_stream(fd)
             ie.module_str_addr = fd.tell()
@@ -326,6 +361,8 @@ class WASM:
             elif ie.kind == 2:              ie.type = memory_type(fd)
             elif ie.kind == 3:              ie.type = global_type(fd)
             imp.entries.append(ie)
+            dbg("%d - %#x: %s" % (ent, fd.tell(), ie))
+        dbg(imp)
         return imp
 
 
@@ -358,7 +395,7 @@ class WASM:
                 _, s.id = varint_decode_stream(fd)
                 assert s.id in range(12), "[parser] Found invalid id %d at %#x" % (s.id, s.start_ea)
                 _, s.payload_len = varint_decode_stream(fd)
-                if DEBUG: print("{:d} - {:s}".format(s.id, WasmSection.id_str(s.id)))
+                dbg("{:d} - {:s}".format(s.id, WasmSection.id_str(s.id)))
 
                 if s.id == WasmSection.CUSTOM:
                     sizeof_namelen, s.name_len = varint_decode_stream(fd)
@@ -383,8 +420,19 @@ class WASM:
                 s.end_ea = fd.tell()
                 self.sections.append(s)
             except Exception as e:
-                print("[!] Raised exception '%s'" % str(e))
+                err("ParseSection() raised exception '%s', skipping..." % (str(e),))
                 break
+
+        dbg("[*] found %d sections" % len(self.sections))
+
+        found_code_section = False
+        for s in self.sections:
+            if s.id == WasmSection.CODE:
+                found_code_section = True
+                break
+
+        assert found_code_section, "WASM file invalid: no CODE section"
+            
 
         for s in self.sections:
             name = WasmSection.id_str(s.id)
@@ -402,14 +450,14 @@ class WASM:
 
             if s.id == WasmSection.EXPORT:
                 for idx, ee in enumerate(s.payload_data.entries):
-                    if DEBUG: print("[EXPORT] Making str %d at %x (len=%x)" % (idx, ee.start_ea, ee.field_len))
+                    dbg("[EXPORT] Making str %d at %x (len=%x)" % (idx, ee.start_ea, ee.field_len))
                     idc.MakeStr(ee.start_ea,  ee.start_ea+ee.field_len)
 
             if s.id == WasmSection.IMPORT:
                 for idx, imp in enumerate(s.payload_data.entries):
-                    # if DEBUG: print("[IMPORT] Making module str %d at %x (len=%x)" % (idx, imp.module_str_addr, imp.module_len))
+                    # dbg("[IMPORT] Making module str %d at %x (len=%x)" % (idx, imp.module_str_addr, imp.module_len))
                     # idc.MakeStr(imp.module_str_addr, imp.module_str_addr+imp.module_len)
-                    # if DEBUG: print("[IMPORT] Making field str %d at %x (len=%x)" % (idx, imp.field_str_addr, imp.field_len))
+                    # dbg("[IMPORT] Making field str %d at %x (len=%x)" % (idx, imp.field_str_addr, imp.field_len))
                     # idc.MakeStr(imp.field_str_addr, imp.field_str_addr+imp.field_len)
                     __class = idaapi.get_many_bytes(imp.module_str_addr, imp.module_len)
                     __func = idaapi.get_many_bytes(imp.field_str_addr, imp.field_len)
