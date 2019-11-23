@@ -25,11 +25,23 @@ import struct
 
 from idaapi import *
 
+
+#
+# If True, the disassembly will take way longer
+#
 DEBUG = False
 
 
 FL_SIGNED = 0x000001
 UA_MAXOP  = 8
+
+
+def log(x): print(x)
+def dbg(x): log("[*] {:s}".format(x)) if DEBUG else None
+def ok(x): log("[+] {:s}".format(x))
+def err(x): log("[-] {:s}".format(x))
+def warn(x): log("[!] {:s}".format(x))
+
 
 class DecodingError(Exception):
     pass
@@ -87,7 +99,8 @@ class memory_immediate:
     def __init__(self, raw):
         s1, self.flags = varint_decode_bytes(raw)
         s2, self.offset = varint_decode_bytes(raw[s1:])
-        self.size = s1+ s2
+        self.size = s1 + s2
+        self.value = self.offset
 
 
 class block_type:
@@ -107,7 +120,7 @@ def get_next_bytes(insn, nb):
 
 
 def read_until(insn, c):
-    res = ""
+    res = []
     nb = 0
     while True:
         cur = chr(insn.get_next_byte())
@@ -117,7 +130,7 @@ def read_until(insn, c):
         res.append(cur)
         nb += 1
     insn.size -= nb
-    return res
+    return "".join(res)
 
 
 
@@ -146,7 +159,7 @@ FL_SIGNED    = 0x000001000 # This is a signed operand
 
 class wasm_processor_t(processor_t):
     id = 0x8000 + 1337
-    flag = PR_ADJSEGS | PRN_HEX # | PR_CNDINSNS | PR_USE32
+    flag = PR_USE32 | PR_NO_SEGMOVE | PR_ADJSEGS | PRN_HEX 
     cnbits = 8
     dnbits = 8
     psnames = ["wasm"]
@@ -169,7 +182,7 @@ class wasm_processor_t(processor_t):
         "a_word": ".word",
         "a_bss": "dfs %s",
         "a_seg": "seg",
-        "a_curip": "PC",
+        "a_curip": "pc",
         "a_public": "",
         "a_weak": "",
         "a_extrn": ".extern",
@@ -408,7 +421,7 @@ class wasm_processor_t(processor_t):
 
 
     def notify_emu(self, insn):
-        if DEBUG: print("[+] in notify_emu...")
+        dbg("in notify_emu...")
         aux = insn.auxpref
         ft = insn.get_canon_feature()
 
@@ -431,7 +444,7 @@ class wasm_processor_t(processor_t):
 
 
     def notify_out_operand(self, ctx, op):
-        if DEBUG: print("in notify_out_operand...")
+        dbg("in notify_out_operand...")
         optype = op.type
         fl = op.specval
         signed = OOF_SIGNED if fl & FL_SIGNED else 0
@@ -440,7 +453,7 @@ class wasm_processor_t(processor_t):
 
 
     def notify_out_insn(self, ctx):
-        if DEBUG: print("[+] in notify_out_insn...")
+        dbg("in notify_out_insn...")
         operands = []
 
         ctx.out_mnemonic()
@@ -461,18 +474,18 @@ class wasm_processor_t(processor_t):
 
 
     def notify_ana(self, insn):
-        if DEBUG: print("[+] in notify_ana...")
+        dbg("in notify_ana...")
         self._ana(insn)
         return insn.size
 
 
     def ev_out_operand(self, ctx, op):
-        if DEBUG: print("[+] in ev_out_operand...")
+        dbg("in ev_out_operand...")
         return 1
 
 
     def ev_out_insn(self, ctx):
-        if DEBUG: print("[+] in ev_out_insn...")
+        dbg("in ev_out_insn...")
         return
 
 
@@ -483,7 +496,7 @@ class wasm_processor_t(processor_t):
 
 
     def init_instructions(self):
-        if DEBUG: print("Initializing WASM processor instruction set...")
+        dbg("Initializing WASM processor instruction set...")
         self.inames = {}
         self.insns = {}
         WasmInstruction = collections.namedtuple("WasmInstruction", ["name" , "opcode" , "description" , "feature", "args"])
@@ -514,17 +527,18 @@ class wasm_processor_t(processor_t):
     #
 
     def _ana(self, insn):
+        dbg("_ana at 0x%x" % insn.ea)
         opcode = insn.get_next_byte()
 
         if not opcode in self.insns:
-            raise DecodingError("Unknown opcode %x" % opcode)
+            raise DecodingError("Unknown opcode 0x%x at offset 0x%x" % (opcode, insn.ea))
 
         wi = self.insns[opcode]
 
         insn.itype = self.inames[wi.name]
         insn.size = 1
 
-        if DEBUG: print("[+] creating insn (type=%d, size=%d, ea=%x, ip=%x)" % (insn.itype, insn.size, insn.ea, insn.ip))
+        dbg("creating insn %s (type=%d, size=%d, ea=%x, ip=%x)" % (wi.name, insn.itype, insn.size, insn.ea, insn.ip))
 
         if wi.args:
 
@@ -540,7 +554,7 @@ class wasm_processor_t(processor_t):
                     op.specval |= FL_SIGNED
                     op.addr = insn.ea + insn.size
                     insn.size += arg.size
-                    if DEBUG: print("[+] adding VARUINT32 operand (value=%d, size=%d, raw=%s)" % (arg.value, arg.size, repr(raw_bytes)))
+                    dbg("adding VARUINT32 operand (value=%d, size=%d, raw=%s)" % (arg.value, arg.size, repr(raw_bytes)))
                     continue
 
                 if arg_t is block_type:
@@ -552,7 +566,7 @@ class wasm_processor_t(processor_t):
                     op.specval |= FL_SIGNED
                     op.addr = insn.ea + insn.size
                     insn.size += b.size
-                    if DEBUG: print("[+] adding BLOCK_TYPE operand (value=%d, size=%d, raw=%s)" % (b.value, b.size, repr(raw_bytes)))
+                    dbg("adding BLOCK_TYPE operand (value=%d, size=%d, raw=%s)" % (b.value, b.size, repr(raw_bytes)))
                     continue
 
                 if arg_t is memory_immediate:
@@ -564,14 +578,14 @@ class wasm_processor_t(processor_t):
                     op.specval |= FL_SIGNED
                     op.addr = insn.ea + insn.size
                     insn.size += mi.size
-                    if DEBUG: print("[+] adding MEMORY_IMMEDIATE operand (value=%d, size=%d, raw=%s)" % (mi.value, mi.size, repr(raw_bytes)))
+                    dbg("adding MEMORY_IMMEDIATE operand (value=%d, size=%d, raw=%s)" % (mi.value, mi.size, repr(raw_bytes)))
                     continue
 
                 # default
                 op.type = o_void
                 op.flags = 0
 
-        if DEBUG: print("[+] opcode %x -> %s, size=%d" % (wi.opcode, wi.name, insn.size))
+        dbg("opcode %x -> %s, size=%d" % (wi.opcode, wi.name, insn.size))
         return insn.size
 
 
