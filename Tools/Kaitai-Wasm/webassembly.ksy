@@ -5,8 +5,6 @@ meta:
     file-extension: wasm
     endian: le
     license: CC0-1.0
-    file-extension:
-      - wasm
     imports:
       - vlq_base128_le
 
@@ -171,12 +169,6 @@ types:
         enum: payload_type
       - id: payload_len
         type: vlq_base128_le
-      - id: name_len
-        type: u4
-        if: id == payload_type::custom_payload
-      - id: name
-        size: name_len
-        if: id == payload_type::custom_payload
 
   section:
     seq:
@@ -188,18 +180,19 @@ types:
           switch-on: header.id
           cases:
             # https://github.com/WebAssembly/design/blob/master/BinaryEncoding.md#high-level-structure
-            'payload_type::custom_payload':    unimplemented_section
-            'payload_type::type_payload':      type_section
-            'payload_type::import_payload':    import_section
-            'payload_type::function_payload':  function_section
-            'payload_type::table_payload':     table_section
-            'payload_type::memory_payload':    memory_section
-            'payload_type::global_payload':    global_section
-            'payload_type::export_payload':    export_section
-            'payload_type::start_payload':     start_section
-            'payload_type::element_payload':   element_section
-            'payload_type::code_payload':      code_section
-            'payload_type::data_payload':      data_section
+            'payload_type::custom_payload':       unimplemented_section
+            'payload_type::type_payload':         type_section
+            'payload_type::import_payload':       import_section
+            'payload_type::function_payload':     function_section
+            'payload_type::table_payload':        table_section
+            'payload_type::memory_payload':       memory_section
+            'payload_type::global_payload':       global_section
+            'payload_type::export_payload':       export_section
+            'payload_type::start_payload':        start_section
+            'payload_type::element_payload':      element_section
+            'payload_type::code_payload':         code_section
+            'payload_type::data_payload':         data_section
+            'payload_type::data_count_payload':   data_count_section
 
 
   sections:
@@ -342,12 +335,21 @@ types:
         repeat: expr
         repeat-expr: count.value
 
+  data_count_section:
+    seq:
+      - id: count
+        type: vlq_base128_le
+
   unimplemented_section:
       seq:
+        - id: name_len
+          type: vlq_base128_le
+        - id: name
+          size: name_len.value
         - id: raw
           type: u1
           repeat: expr
-          repeat-expr: _parent.header.payload_len.value
+          repeat-expr: _parent.header.payload_len.value - name_len.value - name_len.len
 
 #####################################################################################################
 
@@ -387,6 +389,7 @@ enums:
     9: element_payload
     10: code_payload
     11: data_payload
+    12: data_count_payload
 
   elem_type:
     0x70: anyfunc
