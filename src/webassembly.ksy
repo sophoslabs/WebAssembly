@@ -170,40 +170,6 @@ types:
         type: linking_custom_subsection_type
         repeat: eos
 
-  syminfo_type:
-    seq:
-      - id: kind
-        type: u1
-      - id: flags
-        type: vlq_base128_le
-      - id: name_len
-        type: vlq_base128_le
-        if: kind == 1 #and (flags.value & 0x40) == 0x40
-      - id: name_data
-        type: str
-        encoding: UTF-8
-        size: name_len.value
-        if: kind == 1 #and (flags.value & 0x40) == 0x40
-      - id: index
-        type: vlq_base128_le
-        if: kind == 1 #and (flags.value & 0x40) == 0x40
-      - id: offset
-        type: vlq_base128_le
-        if: kind == 1 #and (flags.value & 0x40) == 0x40
-      - id: size
-        type: vlq_base128_le
-        if: kind == 1 #and (flags.value & 0x40) == 0x40
-
-  symbol_table_type:
-    seq:
-      - id: count
-        type: vlq_base128_le
-      - id: infos
-        type: syminfo_type
-        repeat: expr
-        repeat-expr: count.value
-
-
   linking_custom_subsection_type:
     seq:
       - id: type
@@ -217,13 +183,48 @@ types:
       - id: symbol_table
         type: symbol_table_type
         size: payload_len.value
-        if: type == 8
+        if: type == linking_metadata_payload_type::symbol_table.to_i
 
       - id: payload_data
         type: u1
         repeat: expr
         repeat-expr: payload_len.value
-        if: type != 8
+        if: type != linking_metadata_payload_type::symbol_table.to_i
+
+  syminfo_type:
+    seq:
+      - id: kind
+        type: u1
+        enum: symtab
+      - id: flags
+        type: vlq_base128_le
+      - id: data
+        type: syminfo_data
+        if: kind == symtab::data 
+
+  syminfo_data:
+    seq:
+      - id: name_len
+        type: vlq_base128_le
+      - id: name_data
+        type: str
+        encoding: UTF-8
+        size: name_len.value
+      - id: index
+        type: vlq_base128_le
+      - id: offset
+        type: vlq_base128_le
+      - id: size
+        type: vlq_base128_le
+
+  symbol_table_type:
+    seq:
+      - id: count
+        type: vlq_base128_le
+      - id: infos
+        type: syminfo_type
+        repeat: expr
+        repeat-expr: count.value
 
 
   section_header:
@@ -469,3 +470,26 @@ enums:
   mutability_flag:
     0: immutable
     1: mutable
+
+  linking_metadata_payload_type:
+    5: segment_info
+    6: init_funcs
+    7: comdat_info
+    8: symbol_table    
+
+  symtab:
+    0: function
+    1: data
+    2: global
+    3: section
+    4: event
+    5: table    
+
+  symflag:
+    1:    binding_weak       # Indicating that this is a weak symbol. When linking multiple modules defining the same symbol, all weak definitions are discarded if any strong definitions exist; then if multiple weak definitions exist all but one (unspecified) are discarded; and finally it is an error if more than one definition remains.
+    2:    binding_local      # Indicating that this is a local symbol (this is exclusive with WASM_SYM_BINDING_WEAK). Local symbols are not to be exported, or linked to other modules/sections. The names of all non-local symbols must be unique, but the names of local symbols are not considered for uniqueness. A local function or global symbol cannot reference an import.
+    4:    visibility_hidden  # Indicating that this is a hidden symbol. Hidden symbols are not to be exported when performing the final link, but may be linked to other modules.
+    0x10: undefined          # Indicating that this symbol is not defined. For non-data symbols, this must match whether the symbol is an import or is defined; for data symbols, determines whether a segment is specified.
+    0x20: exported           # The symbol is intended to be exported from the wasm module to the host environment. This differs from the visibility flags in that it effects the static linker.
+    0x40: explicit_name      # The symbol uses an explicit symbol name, rather than reusing the name from a wasm import. This allows it to remap imports from foreign WebAssembly modules into local symbols with different names.
+    0x80: no_strip           # The symbol is intended to be included in the linker output, regardless of whether it is used by the program.
