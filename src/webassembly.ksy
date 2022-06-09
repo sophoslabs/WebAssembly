@@ -201,9 +201,12 @@ types:
       - id: data
         type: syminfo_data
         if: kind == symtab::data 
-      - id: raw
+      - id: ext
         type: syminfo_ext
         if: kind == symtab::function or kind == symtab::global or kind == symtab::event or kind == symtab::table
+      - id: section
+        type: syminfo_section
+        if: kind == symtab::section
 
   syminfo_ext:
     seq:
@@ -211,12 +214,18 @@ types:
         type: vlq_base128_le
       - id: name_len
         type: vlq_base128_le
-        if: _parent.flags.value & symflag::undefined.to_i != 0
+        if: _parent.flags.value & symflag::undefined.to_i == 0
       - id: name_data
         type: str
         encoding: UTF-8
         size: name_len.value
-        if: _parent.flags.value & symflag::undefined.to_i != 0
+        if: _parent.flags.value & symflag::undefined.to_i == 0
+
+
+  syminfo_section:
+    seq:
+      - id: section
+        type: vlq_base128_le
 
 
   syminfo_data:
