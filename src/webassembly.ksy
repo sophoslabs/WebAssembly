@@ -227,7 +227,6 @@ types:
       - id: section
         type: vlq_base128_le
 
-
   syminfo_data:
     seq:
       - id: name_len
@@ -238,10 +237,13 @@ types:
         size: name_len.value
       - id: index
         type: vlq_base128_le
+        if: _parent.flags.value & symflag::undefined.to_i == 0
       - id: offset
         type: vlq_base128_le
+        if: _parent.flags.value & symflag::undefined.to_i == 0
       - id: size
         type: vlq_base128_le
+        if: _parent.flags.value & symflag::undefined.to_i == 0
 
   symbol_table_type:
     seq:
