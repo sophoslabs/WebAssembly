@@ -308,12 +308,12 @@ types:
     # https://github.com/WebAssembly/design/blob/master/BinaryEncoding.md#import-section
     seq:
       - id: count
-        type: u1
+        type: vlq_base128_le
       - id: entries
         type: import_entry
-        if: count > 0
+        if: count.value > 0
         repeat: expr
-        repeat-expr: count
+        repeat-expr: count.value
 
   import_entry:
     # https://github.com/WebAssembly/design/blob/master/BinaryEncoding.md#import-entry
